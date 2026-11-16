@@ -2,10 +2,14 @@
 """Carga de partidas limpias al grafo Neo4j.
 
 Integrante 3 - Proyecto Big Data Lichess.
+
+Al empezar crea las constraints de esquema.cypher (crear_esquema.py), como hacen Mongo y
+Cassandra, para que la carga funcione y sea rápida aunque la base esté vacía.
 """
 
 import json
 
+from carga_neo4j.crear_esquema import crear_esquema
 from comun.conexiones import obtener_neo4j
 from comun.contrato import validar_registro
 
@@ -86,6 +90,7 @@ def construir_grafo_neo4j(ruta_limpia: str) -> int:
     tamano_lote = 500
 
     with obtener_neo4j() as driver:
+        crear_esquema(driver)  # constraints e índices antes de cualquier MERGE
         with driver.session() as session:
             with open(ruta_limpia, "r", encoding="utf-8") as archivo:
                 for linea in archivo:
