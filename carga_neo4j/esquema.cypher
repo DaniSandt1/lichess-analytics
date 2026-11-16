@@ -1,0 +1,8 @@
+CREATE CONSTRAINT jugador_id IF NOT EXISTS
+FOR (j:Jugador) REQUIRE j.id IS UNIQUE;
+
+CREATE CONSTRAINT partida_id IF NOT EXISTS
+FOR (p:Partida) REQUIRE p.id IS UNIQUE;
+
+CREATE CONSTRAINT apertura_eco IF NOT EXISTS
+FOR (a:Apertura) REQUIRE a.codigo_eco IS UNIQUE;
