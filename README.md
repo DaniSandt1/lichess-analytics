@@ -65,12 +65,30 @@ No esperen a que Integrante 1 termine la descarga completa.
 
 ### Integrante 1 — Datos y MongoDB
 
+> **PRIORIDAD N.º 1: dejar corriendo la descarga completa HOY, antes que Mongo y el CRUD.**
+> Es lo único lento del proyecto (la API entrega 20 partidas por segundo), y el DAG con datos reales,
+> el dashboard y la grabación del video dependen de ella. Descargar no necesita Docker ni las bases:
+> solo internet.
+
 1. **Extracción** en [extraccion/extraer.py](extraccion/extraer.py): implementar
    `extraer_partidas(desde, hasta)` contra la API de Lichess (detalles en CONTRATO.md, sección 5).
    Devuelve la ruta del JSONL crudo en `datos/lotes/`.
-2. **Carga inicial**: un script `extraccion/carga_inicial.py` que baje ~1,500 partidas de cada uno de
-   ~40 jugadores top (≈ 60,000), pase la limpieza y cargue todo en las bases. Córranlo lo antes posible:
-   tarda (20 partidas/s ≈ 50 min).
+2. **Descarga inicial**: un script `extraccion/carga_inicial.py` que baje ~1,500 partidas de cada uno
+   de ~40 jugadores top (≈ 60,000) y las escriba **crudas** en `datos/lotes/crudo_inicial.jsonl`.
+   Solo descarga: no limpia ni carga en las bases (eso lo hace después el Coordinador con las
+   funciones del contrato, y tarda pocos minutos).
+   - **Tiempo:** 60,000 partidas ÷ 20 por segundo ≈ 50 minutos.
+   - **Para que tarde menos:**
+     - Con un token gratuito de https://lichess.org/account/oauth/token (sin marcar permisos),
+       puesto en `LICHESS_TOKEN` del `.env`, el límite sube a 30 por segundo (≈ 35 minutos).
+     - Pueden repartirse la lista de jugadores: el límite es por persona, así que si dos integrantes
+       bajan 20 jugadores cada uno al mismo tiempo, cada uno tarda la mitad. Para eso, que el script
+       acepte qué parte de la lista bajar (por ejemplo `--desde 0 --hasta 20`) y un nombre de archivo
+       de salida distinto; al final se unen los archivos en `crudo_inicial.jsonl`.
+   - **Para entregarlo:** el archivo pesa unos 55 MB y `datos/lotes/` no se sube a git. Pásenlo al
+     Coordinador por Drive o WhatsApp; él lo pone en `datos/lotes/` y lo carga.
+   - Si la descarga se corta, que el script pueda retomarla desde el último jugador completado
+     en vez de empezar de cero.
 3. **Limpieza**: ya funciona. Revisen las reglas y, si encuentran casos nuevos en la descarga grande, agréguenlos.
 4. **Carga en MongoDB** en [carga_mongo/cargar.py](carga_mongo/cargar.py): `cargar_en_mongo(ruta_cruda, ruta_limpia)`,
    colecciones `partidas` (documento original, `_id` = id) y `jugadores`, con upsert e índices.
@@ -208,8 +226,8 @@ git push -u origin integrante-2           # y abrir el PR en GitHub
 
 | Cuándo | Qué |
 |---|---|
-| Domingo 15, noche | Todos: clonar, levantar su base y correr su función con la muestra. Integrante 1 deja corriendo la carga inicial. |
-| Lunes 16, mañana | Cada uno sube su PR. El Coordinador integra y corre el DAG completo con los ~60,000 registros. |
+| Domingo 15, noche | Integrante 1: lo primero, la descarga inicial, y pasar `crudo_inicial.jsonl` al Coordinador. Todos: clonar, levantar su base y correr su función con la muestra. |
+| Lunes 16, mañana | Cada uno sube su PR. El Coordinador integra, carga `crudo_inicial.jsonl` en las tres bases (minutos) y corre el DAG. |
 | Lunes 16, mediodía | Integrante 4 termina el dashboard con los datos completos y saca las capturas. |
 | Lunes 16, tarde | Informe en PDF, video y entrega. |
 
