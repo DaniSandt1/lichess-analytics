@@ -6,8 +6,9 @@ orquestada con Apache Airflow y visualizada en un dashboard de Streamlit.
 **Problema:** ¿cómo juegan los mejores jugadores de Lichess? Qué aperturas usan, quién gana más,
 cómo cambia su actividad día a día y quién se enfrenta con quién.
 
-**Dataset:** partidas en JSON de la API pública de Lichess, de unos 40 jugadores top y sus rivales.
-Carga inicial de ~60,000 partidas y una carga incremental diaria con las partidas nuevas.
+**Dataset:** partidas en JSON de la API pública de Lichess, de 40 jugadores top y sus rivales.
+Carga inicial de 55,524 partidas limpias (56,581 descargadas) y una carga incremental diaria con las
+partidas nuevas.
 
 > **Antes de escribir una línea de código, lean [CONTRATO.md](CONTRATO.md).** Ahí están los nombres
 > de las colecciones, tablas, nodos y funciones que todos comparten.
@@ -19,8 +20,8 @@ Carga inicial de ~60,000 partidas y una carga incremental diaria con las partida
 | Integrante | Nombre | Rol | Carpetas | Sección del informe |
 |---|---|---|---|---|
 | Coordinador | Daniel Guillermo Sandoval Toro | Infraestructura y Airflow | `dags/`, `comun/`, `infra/`, `docker-compose.yml` | Arquitectura propuesta y explicación del DAG |
-| Integrante 1 | _(completar)_ | Datos y MongoDB | `extraccion/`, `carga_mongo/` | Descripción del dataset y modelo de MongoDB |
-| Integrante 2 | _(completar)_ | Cassandra | `carga_cassandra/` | Modelo de datos de Cassandra |
+| Integrante 1 | Estefano Zárate | Datos y MongoDB | `extraccion/`, `carga_mongo/` | Descripción del dataset y modelo de MongoDB |
+| Integrante 2 | Matias Castillo | Cassandra | `carga_cassandra/` | Modelo de datos de Cassandra |
 | Integrante 3 | Elizabeth Huaman Santillan | Neo4j | `carga_neo4j/` | Modelo de grafo en Neo4j |
 | Integrante 4 | _(completar)_ | KPIs y dashboard | `kpis/`, `dashboard/` | KPIs implementados y capturas del dashboard |
 
@@ -55,6 +56,64 @@ Introducción, descripción del problema y conclusiones: entre todos (o quien te
 
 **Pendiente del Coordinador:** integrar cada parte a medida que llegue, correr el DAG con los datos
 completos, revisar los PRs y escribir las secciones de arquitectura y del DAG del informe.
+
+---
+
+## Avance por integrante
+
+| Integrante | Estado | PR |
+|---|---|---|
+| Integrante 1 — Datos y MongoDB | Terminado | [#5](https://github.com/DaniSandt1/lichess-analytics/pull/5) (por revisar) |
+| Integrante 2 — Cassandra | Terminado | [#3](https://github.com/DaniSandt1/lichess-analytics/pull/3) (en `main`) |
+| Integrante 3 — Neo4j | Código terminado; falta la sección del informe | [#1](https://github.com/DaniSandt1/lichess-analytics/pull/1), [#2](https://github.com/DaniSandt1/lichess-analytics/pull/2) (en `main`) |
+| Integrante 4 — KPIs y dashboard | Pendiente (siguen las plantillas) | — |
+
+### Integrante 1 — Estefano Zárate
+
+- [x] **Extracción** en [extraccion/extraer.py](extraccion/extraer.py): `extraer_partidas(desde, hasta)` baja
+      las partidas del intervalo de 40 jugadores top (lista fija `JUGADORES`), de uno en uno y con
+      reintento ante 429. Probada con el 15/11/2026: 137 partidas crudas, 134 limpias.
+- [x] **Descarga inicial** con [extraccion/carga_inicial.py](extraccion/carga_inicial.py): hasta 1,500 partidas
+      por jugador. Si se corta, retoma desde el último jugador completo. Resultado:
+      **56,581 partidas crudas → 55,524 limpias**, 10,655 jugadores, 219 aperturas y 1,340 días (32 min con token).
+      El archivo `crudo_inicial.jsonl` (50 MB, 11 MB en zip) no va en git: se pasa por Drive o WhatsApp.
+- [x] **MongoDB**: [carga_mongo/crear_indices.py](carga_mongo/crear_indices.py) (colecciones e índices) y
+      [carga_mongo/cargar.py](carga_mongo/cargar.py), con `cargar_en_mongo`. Hace upsert del documento original
+      en `partidas` y recalcula `jugadores` con una agregación y `$merge`. Reejecutar no duplica.
+- [x] **CRUD** en [carga_mongo/crud.py](carga_mongo/crud.py): `python -m carga_mongo.crud`.
+- [x] **Informe**: [informe/dataset_y_mongo.md](informe/dataset_y_mongo.md).
+
+### Integrante 2 — Matias Castillo
+
+- [x] **Esquema** en [carga_cassandra/esquema.cql](carga_cassandra/esquema.cql) (keyspace y las 6 tablas) y
+      [carga_cassandra/crear_esquema.py](carga_cassandra/crear_esquema.py): `python -m carga_cassandra.crear_esquema`.
+- [x] **Carga** en [carga_cassandra/cargar.py](carga_cassandra/cargar.py): `cargar_en_cassandra` hace upsert
+      en `partidas_por_fecha` y recalcula los agregados de cada fecha del lote (sin `counter`). Probada con la
+      carga inicial: 55,524 partidas y 1,340 días en ~20 s. Reejecutar no duplica.
+- [x] **CRUD** en [carga_cassandra/crud.py](carga_cassandra/crud.py) sobre `actividad_por_jugador`:
+      `python -m carga_cassandra.crud`.
+- [x] **Informe**: [informe/modelo_cassandra.md](informe/modelo_cassandra.md).
+- `kpis_por_fecha` ya se crea con el esquema; la llena Integrante 4.
+
+### Cargar la carga inicial en las tres bases (Coordinador)
+
+Con `crudo_inicial.jsonl` en `datos/lotes/` y las bases levantadas:
+
+```bash
+python -m extraccion.limpieza datos/lotes/crudo_inicial.jsonl datos/lotes/limpio_inicial.jsonl
+python -c "from carga_mongo.cargar import cargar_en_mongo; cargar_en_mongo('datos/lotes/crudo_inicial.jsonl', 'datos/lotes/limpio_inicial.jsonl')"
+python -c "from carga_cassandra.cargar import cargar_en_cassandra; cargar_en_cassandra('datos/lotes/limpio_inicial.jsonl')"
+python -c "from carga_neo4j.cargar import construir_grafo_neo4j; construir_grafo_neo4j('datos/lotes/limpio_inicial.jsonl')"
+```
+
+### Lo que falta para cumplir el enunciado
+
+- **Integrante 4:** `calcular_kpis` (la etapa 6 del DAG), el dashboard conectado a las tres bases y la
+  sección de KPIs del informe (definición, fórmula e interpretación de cada uno, y capturas).
+- **Integrante 3:** sección del informe del modelo de grafo en Neo4j.
+- **Coordinador:** cargar la carga inicial, correr el DAG con los datos completos y escribir las
+  secciones de arquitectura y del DAG.
+- **Todos:** introducción, descripción del problema, conclusiones, armar el PDF y grabar el video.
 
 ---
 
