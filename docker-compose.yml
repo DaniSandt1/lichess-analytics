@@ -1,0 +1,104 @@
+# Levanta todo:            docker compose up -d
+# Solo tu base de datos:   docker compose up -d mongo      (o cassandra, o neo4j)
+# Ver estado:              docker compose ps
+# Apagar (sin borrar datos): docker compose down
+# Apagar y BORRAR datos:     docker compose down -v
+
+name: lichess-bigdata
+
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: lichess-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin123}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_datos:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  cassandra:
+    image: cassandra:4.1
+    container_name: lichess-cassandra
+    environment:
+      CASSANDRA_CLUSTER_NAME: lichess
+      # Memoria limitada para que corra en una laptop
+      MAX_HEAP_SIZE: 512M
+      HEAP_NEWSIZE: 128M
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra_datos:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  neo4j:
+    image: neo4j:5.26
+    container_name: lichess-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-lichess123}
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    ports:
+      - "7474:7474"   # navegador web de Neo4j: http://localhost:7474
+      - "7687:7687"   # protocolo bolt (lo usa el driver de Python)
+    volumes:
+      - neo4j_datos:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p '${NEO4J_PASSWORD:-lichess123}' 'RETURN 1' > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  airflow:
+    build: ./infra/airflow
+    image: lichess-airflow:local
+    container_name: lichess-airflow
+    depends_on:
+      mongo:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "false"
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_USER:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_PASSWORD:-admin}
+      # El código del repositorio queda importable desde los DAGs
+      PYTHONPATH: /opt/airflow/proyecto
+      DIR_DATOS: /opt/airflow/proyecto/datos
+      # Dentro de la red de Docker, los hosts son los nombres de los servicios
+      MONGO_HOST: mongo
+      MONGO_USER: ${MONGO_USER:-admin}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:-admin123}
+      CASSANDRA_HOSTS: cassandra
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-lichess123}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./:/opt/airflow/proyecto
+    ports:
+      - "${AIRFLOW_PORT:-8080}:8080"   # interfaz de Airflow: http://localhost:8080 (o el AIRFLOW_PORT del .env)
+    command: bash -c "airflow scheduler & exec airflow webserver"
+
+volumes:
+  mongo_datos:
+  cassandra_datos:
+  neo4j_datos:

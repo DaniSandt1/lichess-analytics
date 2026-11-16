@@ -1,0 +1,25 @@
+# Credenciales locales (se sube solo .env.ejemplo)
+.env
+
+# Lotes que genera el DAG o la carga inicial (pueden pesar cientos de MB)
+datos/lotes/*
+!datos/lotes/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Airflow local
+logs/
+airflow.db
+
+# Editores y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Enunciado del curso (cada uno ya lo tiene)
+Instrucciones Proyecto Grupal II-1.pdf

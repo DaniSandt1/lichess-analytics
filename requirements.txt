@@ -1,0 +1,12 @@
+# Para trabajar desde su laptop (Python 3.11 recomendado).
+#   python -m venv .venv
+#   .venv\Scripts\activate        (Windows)   |   source .venv/bin/activate   (Mac/Linux)
+#   pip install -r requirements.txt
+pymongo==4.10.1
+cassandra-driver==3.29.2
+neo4j==5.27.0
+requests==2.32.3
+pandas==2.2.3
+streamlit==1.40.2
+plotly==5.24.1
+pyvis==0.3.2
