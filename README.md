@@ -21,7 +21,7 @@ Carga inicial de ~60,000 partidas y una carga incremental diaria con las partida
 | Coordinador | Daniel Guillermo Sandoval Toro | Infraestructura y Airflow | `dags/`, `comun/`, `infra/`, `docker-compose.yml` | Arquitectura propuesta y explicación del DAG |
 | Integrante 1 | _(completar)_ | Datos y MongoDB | `extraccion/`, `carga_mongo/` | Descripción del dataset y modelo de MongoDB |
 | Integrante 2 | _(completar)_ | Cassandra | `carga_cassandra/` | Modelo de datos de Cassandra |
-| Integrante 3 | _(completar)_ | Neo4j | `carga_neo4j/` | Modelo de grafo en Neo4j |
+| Integrante 3 | Elizabeth Huaman Santillan | Neo4j | `carga_neo4j/` | Modelo de grafo en Neo4j |
 | Integrante 4 | _(completar)_ | KPIs y dashboard | `kpis/`, `dashboard/` | KPIs implementados y capturas del dashboard |
 
 Introducción, descripción del problema y conclusiones: entre todos (o quien termine primero).
