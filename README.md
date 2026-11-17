@@ -63,10 +63,10 @@ completos, revisar los PRs y escribir las secciones de arquitectura y del DAG de
 
 | Integrante | Estado | PR |
 |---|---|---|
-| Integrante 1 — Datos y MongoDB | Terminado | [#5](https://github.com/DaniSandt1/lichess-analytics/pull/5) (por revisar) |
+| Integrante 1 — Datos y MongoDB | Terminado | [#5](https://github.com/DaniSandt1/lichess-analytics/pull/5) (en `main`) |
 | Integrante 2 — Cassandra | Terminado | [#3](https://github.com/DaniSandt1/lichess-analytics/pull/3) (en `main`) |
 | Integrante 3 — Neo4j | Código terminado; falta la sección del informe | [#1](https://github.com/DaniSandt1/lichess-analytics/pull/1), [#2](https://github.com/DaniSandt1/lichess-analytics/pull/2) (en `main`) |
-| Integrante 4 — KPIs y dashboard | Pendiente (siguen las plantillas) | — |
+| Integrante 4 — KPIs y dashboard | Código terminado; falta la sección del informe y las capturas | [#6](https://github.com/DaniSandt1/lichess-analytics/pull/6) (en `main`) |
 
 ### Integrante 1 — Estefano Zárate
 
@@ -104,12 +104,16 @@ python -m extraccion.limpieza datos/lotes/crudo_inicial.jsonl datos/lotes/limpio
 python -c "from carga_mongo.cargar import cargar_en_mongo; cargar_en_mongo('datos/lotes/crudo_inicial.jsonl', 'datos/lotes/limpio_inicial.jsonl')"
 python -c "from carga_cassandra.cargar import cargar_en_cassandra; cargar_en_cassandra('datos/lotes/limpio_inicial.jsonl')"
 python -c "from carga_neo4j.cargar import construir_grafo_neo4j; construir_grafo_neo4j('datos/lotes/limpio_inicial.jsonl')"
+python -m kpis.calcular --desde 2026-08-01 --hasta 2026-11-16   # KPIs de cada día, para el dashboard
 ```
+
+Probado el 16/11/2026 sobre bases vacías: limpieza 7 s, Mongo 10 s, Cassandra 97 s y Neo4j 32 s.
+Las tres bases quedan con 55,524 partidas, y repetir los comandos no duplica nada.
 
 ### Lo que falta para cumplir el enunciado
 
-- **Integrante 4:** `calcular_kpis` (la etapa 6 del DAG), el dashboard conectado a las tres bases y la
-  sección de KPIs del informe (definición, fórmula e interpretación de cada uno, y capturas).
+- **Integrante 4:** sección de KPIs del informe (definición, fórmula e interpretación de cada uno)
+  y capturas del dashboard.
 - **Integrante 3:** sección del informe del modelo de grafo en Neo4j.
 - **Coordinador:** cargar la carga inicial, correr el DAG con los datos completos y escribir las
   secciones de arquitectura y del DAG.

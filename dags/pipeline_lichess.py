@@ -62,10 +62,12 @@ def pipeline_lichess():
         return construir_grafo_neo4j(ruta_limpia)
 
     @task
-    def calcular_kpis(ds=None) -> dict:
+    def calcular_kpis(data_interval_start=None) -> dict:
         from kpis.calcular import calcular_kpis as calcular
 
-        return calcular(ds)
+        # El día cuyas partidas se extrajeron. No se usa `ds`: en una ejecución manual (botón ▶)
+        # `ds` es el día del clic, mientras que la extracción baja el intervalo anterior.
+        return calcular(data_interval_start.strftime("%Y-%m-%d"))
 
     ruta_cruda = extraer()
     ruta_limpia = validar_y_limpiar(ruta_cruda)
