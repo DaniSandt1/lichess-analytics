@@ -10,7 +10,7 @@ RETURN
     j.nombre AS nombre,
     COUNT(DISTINCT rival) AS rivales_distintos
 ORDER BY rivales_distintos DESC
-LIMIT 1;
+LIMIT 5;
 
 
 /*
@@ -34,6 +34,7 @@ Consulta 3: Subgrafo de un jugador y sus rivales
 Muestra visualmente sus conexiones de enfrentamiento.
 */
 
-MATCH (j:Jugador {id: 'realdavidnavara'})
+MATCH (j:Jugador {id: 'affa19'})
       -[r:ENFRENTO]-(rival:Jugador)
-RETURN j, r, rival;
+RETURN j, r, rival
+ORDER BY r.veces DESC LIMIT 60;
