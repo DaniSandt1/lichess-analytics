@@ -14,7 +14,8 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin123}
     ports:
-      - "27017:27017"
+      # Puerto en tu PC configurable con MONGO_PORT en el .env (por si ya tienes un MongoDB local en 27017)
+      - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo_datos:/data/db
     healthcheck:
