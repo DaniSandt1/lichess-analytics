@@ -66,7 +66,9 @@ try:
         for i, (nombre, label) in enumerate(KPI_LABELS.items()):
             if nombre in kpis:
                 valor, detalle = kpis[nombre]
-                cols[i % 3].metric(label, f"{valor:.2f}", help=detalle if detalle else None)
+                # valor es None cuando el KPI no se puede calcular (ej. sin partidas el día anterior)
+                texto = "—" if valor is None else f"{valor:.2f}"
+                cols[i % 3].metric(label, texto, help=detalle if detalle else None)
     else:
         st.info(
             f"No hay KPIs calculados para {fecha_elegida}. "
@@ -130,7 +132,7 @@ if busqueda:
                     ]
                 },
                 limit=20,
-            )
+            ).sort("createdAt", -1)  # las más recientes primero
         )
         if resultados:
             st.success(f"{len(resultados)} partida(s) encontrada(s).")
@@ -163,7 +165,7 @@ if jugador_id:
             aristas = neo_sesion.run(
                 "MATCH (j:Jugador {id: $id})-[e:ENFRENTO]-(r:Jugador) "
                 "RETURN j.id AS origen, r.id AS rival, e.veces AS veces "
-                "LIMIT 60",
+                "ORDER BY veces DESC, rival LIMIT 60",  # los 60 rivales más frecuentes
                 id=jugador_id,
             ).data()
 

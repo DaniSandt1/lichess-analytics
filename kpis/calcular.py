@@ -48,21 +48,25 @@ def calcular_kpis(fecha: str) -> dict:
     kpis: dict = {}
     detalles: dict = {}
 
+    # Si un KPI no se puede calcular (división entre 0), se guarda None (null en Cassandra) con el
+    # motivo en `detalle`. Guardar 0.0 sería engañoso: "0 % de crecimiento" no es lo mismo que
+    # "no hubo partidas el día anterior".
+
     # KPI 1: partidas_dia
     kpis["partidas_dia"] = float(p_d)
     detalles["partidas_dia"] = ""
 
     # KPI 2: crecimiento_diario_pct
-    kpis["crecimiento_diario_pct"] = ((p_d - p_ayer) / p_ayer * 100) if p_ayer else 0.0
-    detalles["crecimiento_diario_pct"] = ""
+    kpis["crecimiento_diario_pct"] = ((p_d - p_ayer) / p_ayer * 100) if p_ayer else None
+    detalles["crecimiento_diario_pct"] = f"{p_ayer} partidas el día anterior" if p_ayer else "sin partidas el día anterior"
 
     # KPI 3: tasa_victoria_blancas_pct
-    kpis["tasa_victoria_blancas_pct"] = (victorias_blancas_d / p_d * 100) if p_d else 0.0
-    detalles["tasa_victoria_blancas_pct"] = ""
+    kpis["tasa_victoria_blancas_pct"] = (victorias_blancas_d / p_d * 100) if p_d else None
+    detalles["tasa_victoria_blancas_pct"] = "" if p_d else "sin partidas ese día"
 
     # KPI 6: promedio_partidas_por_jugador
-    kpis["promedio_partidas_por_jugador"] = (2 * p_d / jugadores_activos) if jugadores_activos else 0.0
-    detalles["promedio_partidas_por_jugador"] = ""
+    kpis["promedio_partidas_por_jugador"] = (2 * p_d / jugadores_activos) if jugadores_activos else None
+    detalles["promedio_partidas_por_jugador"] = "" if jugadores_activos else "sin partidas ese día"
 
     # KPI 4: apertura_top (lee toda la partición del día en partidas_por_fecha)
     conteo: dict = defaultdict(lambda: {"total": 0, "vb": 0, "tablas": 0, "nombre": ""})
@@ -79,21 +83,22 @@ def calcular_kpis(fecha: str) -> dict:
             conteo[eco]["tablas"] += 1
 
     if conteo:
-        top_eco = max(conteo, key=lambda e: conteo[e]["total"])
+        # Más partidas primero; si empatan, el código ECO menor, para que el resultado no cambie entre ejecuciones
+        top_eco = min(conteo, key=lambda e: (-conteo[e]["total"], e))
         d = conteo[top_eco]
         rendimiento = (d["vb"] + 0.5 * d["tablas"]) / d["total"] * 100 if d["total"] else 0.0
         kpis["apertura_top"] = rendimiento
         detalles["apertura_top"] = f"{top_eco} - {d['nombre']}"
     else:
-        kpis["apertura_top"] = 0.0
-        detalles["apertura_top"] = ""
+        kpis["apertura_top"] = None
+        detalles["apertura_top"] = "sin partidas ese día"
 
     # KPI 5: jugador_mas_rivales (Neo4j, acumulado — no depende de la fecha)
     with obtener_neo4j() as driver:
         records = driver.execute_query(
             "MATCH (j:Jugador)-[:ENFRENTO]-(r:Jugador) "
             "WITH j, count(DISTINCT r) AS rivales "
-            "ORDER BY rivales DESC LIMIT 1 "
+            "ORDER BY rivales DESC, j.id LIMIT 1 "
             "RETURN j.id AS jugador, rivales"
         ).records
 
@@ -101,8 +106,8 @@ def calcular_kpis(fecha: str) -> dict:
         kpis["jugador_mas_rivales"] = float(records[0]["rivales"])
         detalles["jugador_mas_rivales"] = str(records[0]["jugador"])
     else:
-        kpis["jugador_mas_rivales"] = 0.0
-        detalles["jugador_mas_rivales"] = ""
+        kpis["jugador_mas_rivales"] = None
+        detalles["jugador_mas_rivales"] = "grafo vacío"
 
     # --- Guardar en kpis_por_fecha (INSERT en Cassandra = sobrescribe, idempotente) ---
     stmt = sesion.prepare(
@@ -113,4 +118,30 @@ def calcular_kpis(fecha: str) -> dict:
         sesion.execute(stmt, (fecha_dt, nombre_kpi, valor, detalles.get(nombre_kpi, ""), ahora))
         print(f"[KPI] {nombre_kpi} ({fecha}): {valor}  detalle={detalles.get(nombre_kpi, '')!r}")
 
+    sesion.cluster.shutdown()
     return kpis
+
+
+if __name__ == "__main__":
+    # Calcular los KPIs de un día o de un rango de días (por ejemplo, después de la carga inicial,
+    # para que el dashboard tenga KPIs en todas las fechas y no solo en las que procesó el DAG):
+    #   python -m kpis.calcular --fecha 2026-11-14
+    #   python -m kpis.calcular --desde 2026-08-01 --hasta 2026-11-16
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Calcula los KPIs y los guarda en kpis_por_fecha")
+    parser.add_argument("--fecha", help="un día, YYYY-MM-DD")
+    parser.add_argument("--desde", help="inicio del rango, YYYY-MM-DD")
+    parser.add_argument("--hasta", help="fin del rango, YYYY-MM-DD (por defecto, hoy en UTC)")
+    args = parser.parse_args()
+
+    if args.desde:
+        dia = date.fromisoformat(args.desde)
+        fin = date.fromisoformat(args.hasta) if args.hasta else datetime.now(timezone.utc).date()
+        while dia <= fin:
+            calcular_kpis(dia.isoformat())
+            dia += timedelta(days=1)
+    elif args.fecha:
+        calcular_kpis(args.fecha)
+    else:
+        parser.error("indica --fecha o --desde")
