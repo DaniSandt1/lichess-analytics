@@ -19,9 +19,31 @@ from comun.contrato import (
 )
 
 
-def calcular_kpis(fecha: str) -> dict:
-    """FUNCIÓN DEL CONTRATO. `fecha` es "YYYY-MM-DD" (la fecha lógica del DAG)."""
-    sesion = obtener_cassandra()
+CONSULTA_MAS_RIVALES = (
+    "MATCH (j:Jugador)-[:ENFRENTO]-(r:Jugador) "
+    "WITH j, count(DISTINCT r) AS rivales "
+    "ORDER BY rivales DESC, j.id LIMIT 1 "
+    "RETURN j.id AS jugador, rivales"
+)
+
+
+def jugador_mas_rivales() -> list:
+    """KPI 5 desde Neo4j. Es acumulado (no depende de la fecha), así que un rango lo consulta una vez."""
+    with obtener_neo4j() as driver:
+        return driver.execute_query(CONSULTA_MAS_RIVALES).records
+
+
+def calcular_kpis(fecha: str, sesion=None, rivales=None) -> dict:
+    """FUNCIÓN DEL CONTRATO. `fecha` es "YYYY-MM-DD" (la fecha lógica del DAG).
+
+    `sesion` (Cassandra) y `rivales` (resultado de jugador_mas_rivales) son opcionales: al calcular
+    un rango de días se pasan ya abiertos/calculados para no crear una conexión nueva por día
+    (cada conexión crea hilos, y con ~100 días Windows se queda sin hilos: "can't start new thread").
+    El DAG llama solo con `fecha`, y entonces la función abre y cierra sus propias conexiones.
+    """
+    sesion_propia = sesion is None
+    if sesion_propia:
+        sesion = obtener_cassandra()
     ahora = datetime.now(timezone.utc)
     fecha_dt = date.fromisoformat(fecha)
     anio_mes = fecha[:7]
@@ -94,13 +116,7 @@ def calcular_kpis(fecha: str) -> dict:
         detalles["apertura_top"] = "sin partidas ese día"
 
     # KPI 5: jugador_mas_rivales (Neo4j, acumulado — no depende de la fecha)
-    with obtener_neo4j() as driver:
-        records = driver.execute_query(
-            "MATCH (j:Jugador)-[:ENFRENTO]-(r:Jugador) "
-            "WITH j, count(DISTINCT r) AS rivales "
-            "ORDER BY rivales DESC, j.id LIMIT 1 "
-            "RETURN j.id AS jugador, rivales"
-        ).records
+    records = rivales if rivales is not None else jugador_mas_rivales()
 
     if records:
         kpis["jugador_mas_rivales"] = float(records[0]["rivales"])
@@ -118,7 +134,8 @@ def calcular_kpis(fecha: str) -> dict:
         sesion.execute(stmt, (fecha_dt, nombre_kpi, valor, detalles.get(nombre_kpi, ""), ahora))
         print(f"[KPI] {nombre_kpi} ({fecha}): {valor}  detalle={detalles.get(nombre_kpi, '')!r}")
 
-    sesion.cluster.shutdown()
+    if sesion_propia:
+        sesion.cluster.shutdown()
     return kpis
 
 
@@ -138,9 +155,15 @@ if __name__ == "__main__":
     if args.desde:
         dia = date.fromisoformat(args.desde)
         fin = date.fromisoformat(args.hasta) if args.hasta else datetime.now(timezone.utc).date()
-        while dia <= fin:
-            calcular_kpis(dia.isoformat())
-            dia += timedelta(days=1)
+        # Una sola conexión a Cassandra y una sola consulta a Neo4j para todo el rango
+        sesion = obtener_cassandra()
+        rivales = jugador_mas_rivales()
+        try:
+            while dia <= fin:
+                calcular_kpis(dia.isoformat(), sesion=sesion, rivales=rivales)
+                dia += timedelta(days=1)
+        finally:
+            sesion.cluster.shutdown()
     elif args.fecha:
         calcular_kpis(args.fecha)
     else:

@@ -13,6 +13,11 @@ en tu laptop (localhost) y dentro del contenedor de Airflow (mongo, cassandra, n
 import os
 from pathlib import Path
 
+# El driver de Cassandra carga numpy, y su OpenBLAS reserva memoria para un hilo por núcleo al
+# arrancar. Con Docker ocupando casi toda la RAM eso falla ("OpenBLAS error: Memory allocation
+# still failed"). Nuestros scripts no hacen cálculo numérico pesado: un hilo basta.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
 RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
 
 
